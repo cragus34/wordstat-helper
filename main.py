@@ -15,7 +15,7 @@ from fastapi import FastAPI, Form, HTTPException, Request, BackgroundTasks
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from exporter import build_xlsx
+from exporter import build_xlsx, build_serp_xlsx
 from filters import filter_phrases, should_stop_pagination
 from history import (
     create_query,
@@ -302,3 +302,74 @@ def api_export(query_id: int):
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": content_disposition},
     )
+
+
+# ── API: Поисковая выдача Яндекса (SERP) ─────────────────────────────────
+
+@app.post("/api/serp")
+def api_serp(
+    query: str = Form(...),
+    region: int = Form(213),
+    device: str = Form("desktop"),
+    limit: int = Form(10),
+):
+    if not API_KEY:
+        raise HTTPException(500, "JSONSEO_API_KEY не задан в .env")
+
+    clean_query = query.strip()
+    if not clean_query:
+        raise HTTPException(400, "Поисковый запрос не может быть пустым")
+
+    # Рассчитываем количество страниц (1 страница = до 10-15 результатов)
+    pages = 1
+    if limit > 10:
+        pages = min(2, (limit + 9) // 10)
+
+    client = JsonSeoClient(API_KEY)
+    try:
+        data = client.fetch_yandex_serp(
+            query=clean_query,
+            region=region,
+            pages=pages,
+            device=device,
+            limit=limit,
+        )
+        return {"status": "success", "data": data}
+    except Exception as e:
+        log.error("Ошибка при получении SERP Яндекса: %s", e)
+        raise HTTPException(500, f"Ошибка при запросе к Яндексу: {e}")
+    finally:
+        client.close()
+
+
+@app.post("/api/export-serp")
+async def api_export_serp(request: Request):
+    import urllib.parse
+    import re
+
+    body = await request.json()
+    query = body.get("query", "serp")
+    results = body.get("results", [])
+    region = body.get("region", 213)
+    device = body.get("device", "desktop")
+
+    if not results:
+        raise HTTPException(400, "Нет результатов для экспорта")
+
+    xlsx_bytes = build_serp_xlsx(query, results, region=region, device=device)
+
+    clean_query = re.sub(r'[\\/*?:"<>|]', '', query).strip().replace(" ", "_")
+    clean_query = clean_query[:40] if clean_query else "serp"
+
+    filename_utf8 = f"yandex_top_{clean_query}.xlsx"
+    encoded_filename = urllib.parse.quote(filename_utf8)
+    ascii_fallback = "yandex_serp.xlsx"
+
+    content_disposition = f'attachment; filename="{ascii_fallback}"; filename*=UTF-8\'\'{encoded_filename}'
+
+    return Response(
+        content=xlsx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": content_disposition},
+    )
+

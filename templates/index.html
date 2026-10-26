@@ -20,6 +20,10 @@
                 class="tab-btn px-4 py-2 font-semibold border-b-2 border-blue-600 text-blue-600">
             Сбор семантики
         </button>
+        <button onclick="showTab('serp')" id="tab-serp"
+                class="tab-btn px-4 py-2 font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+            🔍 Поисковая выдача
+        </button>
         <button onclick="showTab('history')" id="tab-history"
                 class="tab-btn px-4 py-2 font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700">
             История
@@ -106,6 +110,111 @@
         </div>
     </div>
 
+    <!-- ═══ ВКЛАДКА: Поисковая выдача ═══ -->
+    <div id="pane-serp" class="hidden">
+
+        <div class="bg-white p-6 rounded-xl shadow-sm mb-6 border border-gray-100">
+            <form id="serpForm" class="grid grid-cols-1 gap-4">
+                <div>
+                    <label class="block font-semibold mb-1">Поисковый запрос:</label>
+                    <input type="text" id="serp_query" placeholder="налоговый вычет для самозанятых" required
+                           class="w-full border rounded p-2 focus:ring focus:ring-blue-300 outline-none">
+                </div>
+                <div class="grid grid-cols-3 gap-4">
+                    <div>
+                        <label class="block font-semibold mb-1">Регион:</label>
+                        <select id="serp_region" class="w-full border rounded p-2 outline-none bg-white">
+                            <option value="213">Москва (213)</option>
+                            <option value="225">Россия (225)</option>
+                            <option value="2">Санкт-Петербург (2)</option>
+                            <option value="54">Екатеринбург (54)</option>
+                            <option value="43">Казань (43)</option>
+                            <option value="65">Новосибирск (65)</option>
+                            <option value="239">Краснодар (239)</option>
+                            <option value="51">Нижний Новгород (51)</option>
+                            <option value="custom">Другой (ввести ID)</option>
+                        </select>
+                    </div>
+                    <div id="serp_custom_region_wrap" class="hidden">
+                        <label class="block font-semibold mb-1">ID региона:</label>
+                        <input type="number" id="serp_custom_region" placeholder="213"
+                               class="w-full border rounded p-2 outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-semibold mb-1">Устройство:</label>
+                        <select id="serp_device" class="w-full border rounded p-2 outline-none bg-white">
+                            <option value="desktop">Desktop</option>
+                            <option value="mobile">Mobile</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block font-semibold mb-1">Позиций в ТОП:</label>
+                        <select id="serp_limit" class="w-full border rounded p-2 outline-none bg-white">
+                            <option value="10">ТОП-10</option>
+                            <option value="20">ТОП-20</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="submit" id="serpSubmitBtn"
+                        class="bg-blue-600 text-white font-semibold p-2.5 rounded hover:bg-blue-700 transition flex items-center justify-center gap-2">
+                    <span>🔍 Найти ТОП сайтов</span>
+                </button>
+            </form>
+        </div>
+
+        <!-- Лоадер -->
+        <div id="serpLoader" class="hidden bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
+            <div class="flex items-center gap-3">
+                <svg class="animate-spin h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                </svg>
+                <span class="text-blue-700 font-semibold">Получение выдачи из Яндекса...</span>
+            </div>
+        </div>
+
+        <!-- Ошибка -->
+        <div id="serpErrorBox" class="hidden bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 mb-4"></div>
+
+        <!-- Результаты -->
+        <div id="serpResults" class="hidden bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h2 class="text-lg font-bold" id="serpResultTitle">Поисковая выдача</h2>
+                    <p class="text-xs text-gray-400 mt-0.5" id="serpResultMeta"></p>
+                </div>
+                <div class="flex gap-2 flex-wrap justify-end">
+                    <button onclick="serpCopyUrls()"
+                            class="bg-gray-100 text-gray-700 text-sm font-semibold px-3 py-2 rounded hover:bg-gray-200 transition flex items-center gap-1.5">
+                        📋 Скопировать URL
+                    </button>
+                    <button onclick="serpCopyDomains()"
+                            class="bg-gray-100 text-gray-700 text-sm font-semibold px-3 py-2 rounded hover:bg-gray-200 transition flex items-center gap-1.5">
+                        📋 Домены
+                    </button>
+                    <button onclick="serpExportExcel()"
+                            class="bg-green-600 text-white text-sm font-semibold px-3 py-2 rounded hover:bg-green-700 transition flex items-center gap-1.5 shadow-sm">
+                        ⬇ Скачать Excel
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse border border-gray-200 text-left text-sm">
+                    <thead>
+                        <tr class="bg-gray-100 text-gray-700">
+                            <th class="border p-2.5 text-center w-10">№</th>
+                            <th class="border p-2.5 w-44">Сайт</th>
+                            <th class="border p-2.5">Заголовок и URL</th>
+                            <th class="border p-2.5">Описание</th>
+                        </tr>
+                    </thead>
+                    <tbody id="serpTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <!-- ═══ ВКЛАДКА: История ═══ -->
     <div id="pane-history" class="hidden">
         <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
@@ -163,7 +272,7 @@
 
     // ── Вкладки ─────────────────────────────────────────────────────────
     function showTab(name) {
-        ['parsing', 'history'].forEach(t => {
+        ['parsing', 'serp', 'history'].forEach(t => {
             document.getElementById('pane-' + t).classList.toggle('hidden', t !== name);
             const btn = document.getElementById('tab-' + t);
             btn.classList.toggle('border-blue-600', t === name);
@@ -434,6 +543,153 @@
             alert('Ошибка загрузки запроса: ' + err.message);
         }
     }
+
+    // ═══ SERP: Поисковая выдача ══════════════════════════════════════════
+
+    let serpLastData = null; // Сохраняем последние результаты для экспорта
+
+    // Регион: показываем поле ввода при выборе "Другой"
+    document.getElementById('serp_region').addEventListener('change', function () {
+        document.getElementById('serp_custom_region_wrap').classList.toggle('hidden', this.value !== 'custom');
+    });
+
+    // Форма SERP
+    document.getElementById('serpForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        const query = document.getElementById('serp_query').value.trim();
+        const regionSelect = document.getElementById('serp_region').value;
+        const region = regionSelect === 'custom'
+            ? (parseInt(document.getElementById('serp_custom_region').value) || 213)
+            : parseInt(regionSelect);
+        const device = document.getElementById('serp_device').value;
+        const limit = parseInt(document.getElementById('serp_limit').value);
+
+        const loader = document.getElementById('serpLoader');
+        const errorBox = document.getElementById('serpErrorBox');
+        const results = document.getElementById('serpResults');
+        const submitBtn = document.getElementById('serpSubmitBtn');
+
+        loader.classList.remove('hidden');
+        errorBox.classList.add('hidden');
+        results.classList.add('hidden');
+        submitBtn.disabled = true;
+        serpLastData = null;
+
+        try {
+            const fd = new FormData();
+            fd.append('query', query);
+            fd.append('region', region);
+            fd.append('device', device);
+            fd.append('limit', limit);
+
+            const resp = await fetch('/api/serp', { method: 'POST', body: fd });
+            const json = await resp.json();
+
+            if (!resp.ok) {
+                throw new Error(json.detail || 'Не удалось получить выдачу');
+            }
+
+            const data = json.data;
+            serpLastData = data;
+
+            // Мета-строка
+            document.getElementById('serpResultTitle').textContent = `ТОП-${data.results.length} сайтов по запросу «${data.query}»`;
+            const regionNames = {213:'Москва',225:'Россия',2:'Санкт-Петербург',54:'Екатеринбург',43:'Казань',65:'Новосибирск',239:'Краснодар',51:'Нижний Новгород'};
+            const regionName = regionNames[data.region] || `Регион ${data.region}`;
+            document.getElementById('serpResultMeta').textContent =
+                `${data.found_human || ''}  •  ${regionName}  •  ${device === 'mobile' ? 'Mobile' : 'Desktop'}  •  только органика, без рекламы`;
+
+            renderSerpTable(data.results);
+            results.classList.remove('hidden');
+            results.scrollIntoView({ behavior: 'smooth' });
+
+        } catch (err) {
+            errorBox.textContent = '⚠ Ошибка: ' + err.message;
+            errorBox.classList.remove('hidden');
+        } finally {
+            loader.classList.add('hidden');
+            submitBtn.disabled = false;
+        }
+    });
+
+    function renderSerpTable(items) {
+        const tbody = document.getElementById('serpTableBody');
+        tbody.innerHTML = '';
+        if (!items || items.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="border p-4 text-center text-gray-500">Нет результатов</td></tr>';
+            return;
+        }
+        items.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-blue-50/40 transition align-top';
+            const faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(item.domain)}&sz=16`;
+            tr.innerHTML = `
+                <td class="border p-2.5 text-center font-bold text-blue-700 text-base">${item.position}</td>
+                <td class="border p-2.5">
+                    <div class="flex items-center gap-1.5">
+                        <img src="${faviconUrl}" width="16" height="16" alt="" onerror="this.style.display='none'">
+                        <span class="font-semibold text-gray-800 text-xs break-all">${item.domain}</span>
+                    </div>
+                    ${item.breadcrumbs ? `<div class="text-xs text-gray-400 mt-1 break-all">${item.breadcrumbs}</div>` : ''}
+                </td>
+                <td class="border p-2.5">
+                    <a href="${item.url}" target="_blank" rel="noopener"
+                       class="text-blue-600 hover:underline font-medium leading-snug block">${item.title || item.url}</a>
+                    <span class="text-xs text-green-700 break-all mt-0.5 block">${item.url}</span>
+                </td>
+                <td class="border p-2.5 text-gray-600 text-sm leading-relaxed">${item.passage || '—'}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function serpCopyUrls() {
+        if (!serpLastData) return;
+        const urls = serpLastData.results.map(r => r.url).join('\n');
+        navigator.clipboard.writeText(urls).then(() => showCopyToast('URL скопированы в буфер!'));
+    }
+
+    function serpCopyDomains() {
+        if (!serpLastData) return;
+        const domains = serpLastData.results.map(r => r.domain).join('\n');
+        navigator.clipboard.writeText(domains).then(() => showCopyToast('Домены скопированы в буфер!'));
+    }
+
+    async function serpExportExcel() {
+        if (!serpLastData) return;
+        try {
+            const resp = await fetch('/api/export-serp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    query: serpLastData.query,
+                    results: serpLastData.results,
+                    region: serpLastData.region,
+                    device: serpLastData.device,
+                }),
+            });
+            if (!resp.ok) throw new Error('Ошибка экспорта');
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `yandex_top_${serpLastData.query.replace(/\s+/g, '_').slice(0, 40)}.xlsx`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            alert('Ошибка экспорта: ' + err.message);
+        }
+    }
+
+    function showCopyToast(msg) {
+        const t = document.createElement('div');
+        t.textContent = msg;
+        t.className = 'fixed bottom-4 right-4 bg-gray-800 text-white text-sm px-4 py-2 rounded-lg shadow-lg z-50';
+        document.body.appendChild(t);
+        setTimeout(() => t.remove(), 2000);
+    }
+
 </script>
 </body>
 </html>
