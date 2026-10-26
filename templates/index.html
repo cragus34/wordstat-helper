@@ -6,7 +6,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans p-6">
-<div class="max-w-5xl mx-auto">
+<div class="max-w-[1440px] mx-auto">
 
     <!-- Заголовок -->
     <div class="flex justify-between items-center mb-6">
@@ -184,6 +184,10 @@
                     <p class="text-xs text-gray-400 mt-0.5" id="serpResultMeta"></p>
                 </div>
                 <div class="flex gap-2 flex-wrap justify-end">
+                    <button onclick="serpCopyTitles()"
+                            class="bg-blue-50 text-blue-700 text-sm font-semibold px-3 py-2 rounded hover:bg-blue-100 transition flex items-center gap-1.5">
+                        📋 Скопировать Title
+                    </button>
                     <button onclick="serpCopyUrls()"
                             class="bg-gray-100 text-gray-700 text-sm font-semibold px-3 py-2 rounded hover:bg-gray-200 transition flex items-center gap-1.5">
                         📋 Скопировать URL
@@ -205,8 +209,8 @@
                         <tr class="bg-gray-100 text-gray-700">
                             <th class="border p-2.5 text-center w-10">№</th>
                             <th class="border p-2.5 w-44">Сайт</th>
-                            <th class="border p-2.5">Заголовок</th>
-                            <th class="border p-2.5">Описание</th>
+                            <th class="border p-2.5 w-[40%]">Заголовок (Title)</th>
+                            <th class="border p-2.5">Описание (Сниппет)</th>
                         </tr>
                     </thead>
                     <tbody id="serpTableBody"></tbody>
@@ -642,6 +646,12 @@
             `;
             tbody.appendChild(tr);
         });
+    }
+
+    function serpCopyTitles() {
+        if (!serpLastData) return;
+        const titles = serpLastData.results.map(r => r.title).filter(Boolean).join('\n');
+        navigator.clipboard.writeText(titles).then(() => showCopyToast('Заголовки (Title) скопированы!'));
     }
 
     function serpCopyUrls() {

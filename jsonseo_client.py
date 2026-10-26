@@ -3,10 +3,63 @@
 Методы:
   - fetch_phrases(mask, page) → список фраз с базовой частотностью
   - fetch_exact(phrase)       → точная частотность ("!слово !слово", kind="exact")
-  - fetch_yandex_serp(query)  → органическая поисковая выдача Яндекса (ТОП сайтов)
+  - fetch_yandex_serp(query)  → органическая поисковая выдача Яндекса (ТОП сайтов) с полными Title
 """
-import httpx
+import html
+import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, List, Dict, Any
+
+import httpx
+
+
+def _fetch_single_page_title(url: str, timeout: float = 3.0) -> Optional[str]:
+    """Быстро вытягивает реальный полный тег <title> со страницы сайта конкурента."""
+    if not url or not url.startswith("http"):
+        return None
+    try:
+        with httpx.Client(
+            timeout=timeout,
+            follow_redirects=True,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/122.0.0.0 Safari/537.36"
+                ),
+                "Accept": "text/html,application/xhtml+xml",
+                "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+            },
+        ) as client:
+            resp = client.get(url)
+            if resp.status_code == 200:
+                m = re.search(r"<title[^>]*>(.*?)</title>", resp.text, re.IGNORECASE | re.DOTALL)
+                if m:
+                    raw_title = html.unescape(m.group(1)).strip()
+                    clean_title = re.sub(r"\s+", " ", raw_title)
+                    if len(clean_title) >= 3:
+                        return clean_title
+    except Exception:
+        pass
+    return None
+
+
+def enrich_real_titles(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Параллельно обогащает результаты выдачи настоящими полными тегами <title> страниц."""
+    if not results:
+        return results
+
+    def _worker(item: Dict[str, Any]):
+        url = item.get("url")
+        if url:
+            real_title = _fetch_single_page_title(url)
+            if real_title:
+                item["title"] = real_title
+
+    with ThreadPoolExecutor(max_workers=min(len(results), 10)) as executor:
+        list(executor.map(_worker, results))
+
+    return results
 
 
 class JsonSeoClient:
@@ -57,18 +110,7 @@ class JsonSeoClient:
     ) -> Dict[str, Any]:
         """
         GET /yandex — получение органической поисковой выдачи Яндекса без рекламы.
-        Возвращает словарь с метаданными и списком сайтов:
-        [
-          {
-            "position": 1,
-            "url": "https://...",
-            "domain": "example.com",
-            "title": "...",
-            "passage": "...",
-            "breadcrumbs": "..."
-          },
-          ...
-        ]
+        Автоматически обогащает результаты полными реальными Title со страниц сайтов.
         """
         params = {
             "text": query,
@@ -102,6 +144,9 @@ class JsonSeoClient:
                 "breadcrumbs": item.get("breadcrumbs", ""),
             })
 
+        # Обогащаем полными настоящими Title со страниц сайтов (убираем троеточия Яндекса)
+        clean_results = enrich_real_titles(clean_results)
+
         return {
             "query": data.get("query", query),
             "rawQuery": data.get("rawQuery", query),
@@ -115,4 +160,3 @@ class JsonSeoClient:
 
     def close(self):
         self._client.close()
-
