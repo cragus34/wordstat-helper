@@ -11,34 +11,68 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, List, Dict, Any
 
 import httpx
+import urllib3
+urllib3.disable_warnings()
 
 
-def _fetch_single_page_title(url: str, timeout: float = 3.0) -> Optional[str]:
-    """Быстро вытягивает реальный полный тег <title> со страницы сайта конкурента."""
+def _fetch_single_page_title(url: str, timeout: float = 4.0) -> Optional[str]:
+    """
+    Быстро вытягивает реальный полный заголовок со страницы сайта конкурента.
+    Ищет:
+      1. <title>...</title>
+      2. <meta property="og:title" content="...">
+      3. <h1>...</h1>
+    Отключает проверку SSL (verify=False), чтобы работали российские сайты
+    с сертификатами Минцифры (Т-Банк, Сбер, sfr.gov.ru, Госуслуги).
+    """
     if not url or not url.startswith("http"):
         return None
     try:
         with httpx.Client(
             timeout=timeout,
+            verify=False,
             follow_redirects=True,
             headers={
                 "User-Agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/122.0.0.0 Safari/537.36"
+                    "Chrome/123.0.0.0 Safari/537.36"
                 ),
-                "Accept": "text/html,application/xhtml+xml",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
             },
         ) as client:
             resp = client.get(url)
             if resp.status_code == 200:
-                m = re.search(r"<title[^>]*>(.*?)</title>", resp.text, re.IGNORECASE | re.DOTALL)
-                if m:
-                    raw_title = html.unescape(m.group(1)).strip()
-                    clean_title = re.sub(r"\s+", " ", raw_title)
-                    if len(clean_title) >= 3:
-                        return clean_title
+                text = resp.text
+
+                # 1. Сначала ищем <title>
+                m_title = re.search(r"<title[^>]*>(.*?)</title>", text, re.IGNORECASE | re.DOTALL)
+                if m_title:
+                    raw = html.unescape(m_title.group(1)).strip()
+                    clean = re.sub(r"\s+", " ", raw)
+                    # Если тайтл не заглушка (типа "403" или "ВКонтакте | ВКонтакте")
+                    if len(clean) >= 5 and "вконтакте |" not in clean.lower():
+                        return clean
+
+                # 2. Проверяем og:title
+                m_og = re.search(r'<meta[^>]+property=[\'"]og:title[\'"][^>]+content=[\'"](.*?)[\'"]', text, re.IGNORECASE)
+                if not m_og:
+                    m_og = re.search(r'<meta[^>]+content=[\'"](.*?)[\'"][^>]+property=[\'"]og:title[\'"]', text, re.IGNORECASE)
+                if m_og:
+                    raw_og = html.unescape(m_og.group(1)).strip()
+                    clean_og = re.sub(r"\s+", " ", raw_og)
+                    if len(clean_og) >= 5:
+                        return clean_og
+
+                # 3. Проверяем <h1>
+                m_h1 = re.search(r"<h1[^>]*>(.*?)</h1>", text, re.IGNORECASE | re.DOTALL)
+                if m_h1:
+                    raw_h1 = re.sub(r"<[^>]+>", "", m_h1.group(1))
+                    clean_h1 = re.sub(r"\s+", " ", html.unescape(raw_h1)).strip()
+                    if len(clean_h1) >= 5:
+                        return clean_h1
+
     except Exception:
         pass
     return None
@@ -55,6 +89,18 @@ def enrich_real_titles(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             real_title = _fetch_single_page_title(url)
             if real_title:
                 item["title"] = real_title
+            else:
+                # Если сайт заблокировал запрос (WAF/Cloudflare) и остался с троеточием
+                # проверим breadcrumbs: часто Яндекс туда помещает название статьи
+                current_title = item.get("title", "")
+                if current_title.endswith("...") or current_title.endswith("…"):
+                    breadcrumbs = item.get("breadcrumbs", "")
+                    if "›" in breadcrumbs:
+                        parts = breadcrumbs.split("›")
+                        last_part = parts[-1].strip()
+                        # Если последняя крошка длиннее и похожа на заголовок
+                        if len(last_part) > len(current_title.rstrip(".…")):
+                            item["title"] = last_part
 
     with ThreadPoolExecutor(max_workers=min(len(results), 10)) as executor:
         list(executor.map(_worker, results))
