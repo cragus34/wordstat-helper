@@ -1,0 +1,6 @@
+requests
+fastapi
+uvicorn[standard]
+python-dotenv
+openpyxl
+httpx

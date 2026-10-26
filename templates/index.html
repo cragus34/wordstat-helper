@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Wordstat Helper</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans p-6">
+<div class="max-w-5xl mx-auto">
+
+    <!-- Заголовок -->
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-bold text-blue-600">📊 Wordstat Helper</h1>
+        <span class="text-xs text-gray-400">Данные сохраняются автоматически в БД</span>
+    </div>
+
+    <!-- Вкладки -->
+    <div class="flex gap-2 mb-6 border-b border-gray-200">
+        <button onclick="showTab('parsing')" id="tab-parsing"
+                class="tab-btn px-4 py-2 font-semibold border-b-2 border-blue-600 text-blue-600">
+            Сбор семантики
+        </button>
+        <button onclick="showTab('history')" id="tab-history"
+                class="tab-btn px-4 py-2 font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+            История
+        </button>
+    </div>
+
+    <!-- ═══ ВКЛАДКА: Сбор семантики ═══ -->
+    <div id="pane-parsing">
+
+        <div class="bg-white p-6 rounded-xl shadow-sm mb-6 border border-gray-100">
+            <form id="seoForm" class="grid grid-cols-1 gap-4">
+                <div>
+                    <label class="block font-semibold mb-1">Базовая маска:</label>
+                    <input type="text" id="seed_phrase" value="каркасная баня" required
+                           class="w-full border rounded p-2 focus:ring focus:ring-blue-300 outline-none">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block font-semibold mb-1">Мин. базовая частотность:</label>
+                        <input type="number" id="min_freq" value="100"
+                               class="w-full border rounded p-2 outline-none">
+                    </div>
+                    <div>
+                        <label class="block font-semibold mb-1">Стоп-слова (через запятую):</label>
+                        <input type="text" id="custom_stop_words" placeholder="цена, недорого"
+                               class="w-full border rounded p-2 outline-none">
+                    </div>
+                </div>
+                <button type="submit" id="submitBtn"
+                        class="bg-blue-600 text-white font-semibold p-2.5 rounded hover:bg-blue-700 transition flex items-center justify-center gap-2">
+                    <span>Запустить сбор</span>
+                </button>
+            </form>
+        </div>
+
+        <!-- Статус / Прогресс-бар -->
+        <div id="loader" class="hidden bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
+            <div class="flex justify-between items-center mb-2">
+                <span id="stageText" class="text-sm font-semibold text-blue-700">Инициализация...</span>
+                <span id="percentText" class="text-sm font-bold text-blue-600">0%</span>
+            </div>
+            
+            <!-- Полоса прогресса -->
+            <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden mb-4">
+                <div id="progressBar" class="bg-blue-600 h-3 rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
+            </div>
+            
+            <div class="flex justify-between items-center">
+                <span class="text-xs text-gray-400">Каждая фраза сразу записывается в базу SQLite</span>
+                <button type="button" id="cancelBtn" onclick="stopCurrentTask()"
+                        class="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 font-semibold px-3 py-1.5 rounded text-xs transition flex items-center gap-1">
+                    <span>⏹ Остановить сбор</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Ошибка -->
+        <div id="errorBox" class="hidden bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 mb-4"></div>
+
+        <!-- Результаты -->
+        <div id="resultsContainer" class="hidden bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h2 class="text-lg font-bold" id="resultsTitle">Результаты сбора</h2>
+                    <span id="resultCount" class="text-gray-500 text-sm"></span>
+                </div>
+                <button id="exportBtn" onclick="exportExcel()"
+                        class="bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded hover:bg-green-700 transition flex items-center gap-1.5 shadow-sm">
+                    <span>⬇ Скачать Excel</span>
+                </button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse border border-gray-200 text-left text-sm">
+                    <thead>
+                        <tr class="bg-gray-100 text-gray-700">
+                            <th class="border p-2.5">Ключевая фраза</th>
+                            <th class="border p-2.5 text-right w-36">Базовая</th>
+                            <th class="border p-2.5 text-right w-44 text-blue-600">Точная [!фраза] ↓</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultsTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ ВКЛАДКА: История ═══ -->
+    <div id="pane-history" class="hidden">
+        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold">История запросов</h2>
+                <button onclick="loadHistory()"
+                        class="text-blue-600 text-sm hover:underline">↻ Обновить</button>
+            </div>
+            <div id="historyList" class="divide-y divide-gray-100">
+                <p class="text-gray-400 text-sm">Загрузка...</p>
+            </div>
+        </div>
+
+        <!-- Результаты из истории -->
+        <div id="historyResults" class="hidden bg-white rounded-xl shadow-sm p-6 mt-4 border border-gray-100">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h2 class="text-lg font-bold" id="historyResultTitle"></h2>
+                    <span class="text-xs text-gray-400">Сортировка: по точной (убывание)</span>
+                </div>
+                <button id="historyExportBtn"
+                        class="bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded hover:bg-green-700 transition flex items-center gap-1.5">
+                    <span>⬇ Скачать Excel</span>
+                </button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse border border-gray-200 text-left text-sm">
+                    <thead>
+                        <tr class="bg-gray-100 text-gray-700">
+                            <th class="border p-2.5">Ключевая фраза</th>
+                            <th class="border p-2.5 text-right w-36">Базовая</th>
+                            <th class="border p-2.5 text-right w-44 text-blue-600">Точная [!фраза] ↓</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    let currentQueryId = null;
+    let activeTaskId = null;
+    let pollInterval = null;
+
+    // ── При загрузке страницы восстанавливаем активную задачу ────────────
+    window.addEventListener('DOMContentLoaded', () => {
+        const savedTaskId = localStorage.getItem('wordstat_active_task_id');
+        if (savedTaskId) {
+            checkAndResumeTask(savedTaskId);
+        }
+    });
+
+    // ── Вкладки ─────────────────────────────────────────────────────────
+    function showTab(name) {
+        ['parsing', 'history'].forEach(t => {
+            document.getElementById('pane-' + t).classList.toggle('hidden', t !== name);
+            const btn = document.getElementById('tab-' + t);
+            btn.classList.toggle('border-blue-600', t === name);
+            btn.classList.toggle('text-blue-600', t === name);
+            btn.classList.toggle('border-transparent', t !== name);
+            btn.classList.toggle('text-gray-500', t !== name);
+        });
+        if (name === 'history') loadHistory();
+    }
+
+    // ── Запуск сбора ────────────────────────────────────────────────────
+    document.getElementById('seoForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const loader = document.getElementById('loader');
+        const progressBar = document.getElementById('progressBar');
+        const stageText = document.getElementById('stageText');
+        const percentText = document.getElementById('percentText');
+        const errorBox = document.getElementById('errorBox');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const tbody = document.getElementById('resultsTableBody');
+        const submitBtn = document.getElementById('submitBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
+
+        if (pollInterval) clearInterval(pollInterval);
+        loader.classList.remove('hidden');
+        progressBar.style.width = '0%';
+        percentText.textContent = '0%';
+        stageText.textContent = 'Запуск задачи...';
+        cancelBtn.disabled = false;
+        cancelBtn.classList.remove('opacity-50');
+        
+        errorBox.classList.add('hidden');
+        resultsContainer.classList.add('hidden');
+        tbody.innerHTML = '';
+        submitBtn.disabled = true;
+        currentQueryId = null;
+
+        const formData = new FormData();
+        formData.append('seed_phrase', document.getElementById('seed_phrase').value);
+        formData.append('min_freq', document.getElementById('min_freq').value);
+        formData.append('custom_stop_words', document.getElementById('custom_stop_words').value);
+
+        try {
+            const resp = await fetch('/api/run-parsing', { method: 'POST', body: formData });
+            const result = await resp.json();
+
+            if (!resp.ok) {
+                throw new Error(result.detail || 'Не удалось запустить сбор');
+            }
+
+            activeTaskId = result.task_id;
+            localStorage.setItem('wordstat_active_task_id', activeTaskId);
+            startPolling(activeTaskId);
+
+        } catch (err) {
+            loader.classList.add('hidden');
+            submitBtn.disabled = false;
+            errorBox.textContent = '⚠ Ошибка: ' + err.message;
+            errorBox.classList.remove('hidden');
+            localStorage.removeItem('wordstat_active_task_id');
+        }
+    });
+
+    // ── Поллинг статуса задачи ──────────────────────────────────────────
+    function startPolling(taskId) {
+        activeTaskId = taskId;
+        const loader = document.getElementById('loader');
+        const progressBar = document.getElementById('progressBar');
+        const stageText = document.getElementById('stageText');
+        const percentText = document.getElementById('percentText');
+        const errorBox = document.getElementById('errorBox');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const tbody = document.getElementById('resultsTableBody');
+        const submitBtn = document.getElementById('submitBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
+        const resultsTitle = document.getElementById('resultsTitle');
+
+        loader.classList.remove('hidden');
+        submitBtn.disabled = true;
+
+        if (pollInterval) clearInterval(pollInterval);
+
+        pollInterval = setInterval(async () => {
+            try {
+                const taskResp = await fetch(`/api/tasks/${taskId}`);
+                if (!taskResp.ok) {
+                    clearInterval(pollInterval);
+                    localStorage.removeItem('wordstat_active_task_id');
+                    loader.classList.add('hidden');
+                    submitBtn.disabled = false;
+                    return;
+                }
+
+                const task = await taskResp.json();
+                
+                progressBar.style.width = `${task.progress}%`;
+                percentText.textContent = `${task.progress}%`;
+                if (task.stage) stageText.textContent = task.stage;
+
+                if (task.status === 'completed' || task.status === 'stopped') {
+                    clearInterval(pollInterval);
+                    localStorage.removeItem('wordstat_active_task_id');
+                    loader.classList.add('hidden');
+                    submitBtn.disabled = false;
+
+                    currentQueryId = task.query_id;
+                    renderTable(tbody, task.data);
+
+                    if (task.status === 'stopped') {
+                        resultsTitle.innerHTML = `<span class="text-amber-600">⚠ Сбор остановлен</span>`;
+                    } else {
+                        resultsTitle.textContent = `Результаты сбора`;
+                    }
+
+                    document.getElementById('resultCount').textContent =
+                        `Всего фраз: ${task.data ? task.data.length : 0}` + (task.query_id ? ` (запрос #${task.query_id})` : '');
+                    resultsContainer.classList.remove('hidden');
+
+                } else if (task.status === 'failed') {
+                    clearInterval(pollInterval);
+                    localStorage.removeItem('wordstat_active_task_id');
+                    loader.classList.add('hidden');
+                    submitBtn.disabled = false;
+
+                    errorBox.textContent = '⚠ Ошибка сбора: ' + (task.error || 'Неизвестная ошибка');
+                    errorBox.classList.remove('hidden');
+                }
+            } catch (pollErr) {
+                console.error('Ошибка проверки статуса задачи:', pollErr);
+            }
+        }, 700);
+    }
+
+    // ── Восстановление задачи при перезагрузке страницы ─────────────────
+    async function checkAndResumeTask(taskId) {
+        try {
+            const resp = await fetch(`/api/tasks/${taskId}`);
+            if (!resp.ok) {
+                localStorage.removeItem('wordstat_active_task_id');
+                return;
+            }
+            const task = await resp.json();
+            if (task.status === 'running' || task.status === 'pending') {
+                startPolling(taskId);
+            } else if (task.status === 'completed' || task.status === 'stopped') {
+                // Если задача завершилась пока страница обновлялась
+                currentQueryId = task.query_id;
+                renderTable(document.getElementById('resultsTableBody'), task.data);
+                document.getElementById('resultCount').textContent =
+                    `Всего фраз: ${task.data ? task.data.length : 0}` + (task.query_id ? ` (запрос #${task.query_id})` : '');
+                document.getElementById('resultsContainer').classList.remove('hidden');
+                localStorage.removeItem('wordstat_active_task_id');
+            } else {
+                localStorage.removeItem('wordstat_active_task_id');
+            }
+        } catch (e) {
+            localStorage.removeItem('wordstat_active_task_id');
+        }
+    }
+
+    // ── Остановка текущей задачи (Кнопка Стоп) ───────────────────────────
+    async function stopCurrentTask() {
+        if (!activeTaskId) return;
+        const cancelBtn = document.getElementById('cancelBtn');
+        cancelBtn.disabled = true;
+        cancelBtn.classList.add('opacity-50');
+        document.getElementById('stageText').textContent = 'Отправка сигнала остановки...';
+
+        try {
+            await fetch(`/api/tasks/${activeTaskId}/cancel`, { method: 'POST' });
+        } catch (e) {
+            console.error('Ошибка отмены:', e);
+        }
+    }
+
+    // ── Рендер таблицы ───────────────────────────────────────────────────
+    function renderTable(tbody, data) {
+        tbody.innerHTML = '';
+        if (!data || data.length === 0) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `<td colspan="3" class="border p-4 text-center text-gray-500">Ни одной фразы не найдено или сбор был прерван в самом начале</td>`;
+            tbody.appendChild(tr);
+            return;
+        }
+
+        data.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-blue-50/50 transition';
+            const exactVal = item.exact_freq ?? item.super_exact_freq ?? '—';
+            tr.innerHTML = `
+                <td class="border p-2.5">${item.phrase}</td>
+                <td class="border p-2.5 text-right font-mono">${item.base_freq ?? '—'}</td>
+                <td class="border p-2.5 text-right font-mono font-semibold text-blue-700">${exactVal}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    // ── Экспорт Excel ────────────────────────────────────────────────────
+    function exportExcel() {
+        if (!currentQueryId) return;
+        window.location = `/api/export/${currentQueryId}`;
+    }
+
+    // ── История ──────────────────────────────────────────────────────────
+    async function loadHistory() {
+        const list = document.getElementById('historyList');
+        list.innerHTML = '<p class="text-gray-400 text-sm py-2">Загрузка...</p>';
+
+        try {
+            const resp = await fetch('/api/history');
+            const result = await resp.json();
+
+            if (!result.data || !result.data.length) {
+                list.innerHTML = '<p class="text-gray-400 text-sm py-2">Запросов пока нет.</p>';
+                return;
+            }
+
+            list.innerHTML = '';
+            result.data.forEach(q => {
+                const div = document.createElement('div');
+                div.className = 'flex justify-between items-center py-2.5 px-2 hover:bg-gray-50 cursor-pointer rounded transition';
+                
+                let statusBadge = '';
+                if (q.status === 'stopped') {
+                    statusBadge = '<span class="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full ml-2">остановлен</span>';
+                } else if (q.status === 'running') {
+                    statusBadge = '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full ml-2">в процессе</span>';
+                } else if (q.status === 'failed') {
+                    statusBadge = '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full ml-2">ошибка</span>';
+                }
+
+                div.innerHTML = `
+                    <div class="flex items-center">
+                        <span class="font-medium text-gray-800">${q.seed_phrase}</span>
+                        ${statusBadge}
+                        <span class="text-gray-400 text-xs ml-2 bg-gray-100 px-2 py-0.5 rounded-full">${q.phrase_count} фраз</span>
+                    </div>
+                    <span class="text-gray-400 text-xs font-mono">${q.created_at}</span>
+                `;
+                div.onclick = () => loadHistoryItem(q.id, q.seed_phrase, q.created_at);
+                list.appendChild(div);
+            });
+        } catch (err) {
+            list.innerHTML = `<p class="text-red-500 text-sm py-2">Ошибка загрузки истории: ${err.message}</p>`;
+        }
+    }
+
+    async function loadHistoryItem(id, phrase, date) {
+        const container = document.getElementById('historyResults');
+        const tbody = document.getElementById('historyTableBody');
+        const title = document.getElementById('historyResultTitle');
+        const exportBtn = document.getElementById('historyExportBtn');
+
+        container.classList.add('hidden');
+
+        try {
+            const resp = await fetch(`/api/history/${id}`);
+            const result = await resp.json();
+
+            title.textContent = `«${phrase}» — ${date}`;
+            renderTable(tbody, result.results);
+            exportBtn.onclick = () => { window.location = `/api/export/${id}`; };
+            container.classList.remove('hidden');
+            container.scrollIntoView({ behavior: 'smooth' });
+        } catch (err) {
+            alert('Ошибка загрузки запроса: ' + err.message);
+        }
+    }
+</script>
+</body>
+</html>
