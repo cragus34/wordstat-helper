@@ -28,11 +28,23 @@ def filter_phrases(
     return result
 
 
-def should_stop_pagination(page_phrases: list[dict], min_freq: int) -> bool:
+def dedupe_phrases(phrases: list[dict]) -> list[dict]:
     """
-    Вариант B: останавливаем пагинацию, если минимальная частотность
-    на текущей странице уже ниже порога (список отсортирован по убыванию).
+    Убирает повторы фраз, сохраняя порядок и первое вхождение.
+
+    Сравнение идёт по нормализованному тексту: без учёта регистра,
+    лишних пробелов по краям и двойных пробелов внутри. Нужна защита
+    от дублей в ответе API и от повторных запусков по одной маске.
     """
-    if not page_phrases:
-        return True
-    return page_phrases[-1]["value"] < min_freq
+    seen: set[str] = set()
+    result: list[dict] = []
+
+    for p in phrases:
+        text = str(p.get("text", ""))
+        normalized = " ".join(text.split()).lower()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        result.append(p)
+
+    return result

@@ -20,6 +20,10 @@
                 class="tab-btn px-4 py-2 font-semibold border-b-2 border-blue-600 text-blue-600">
             Сбор семантики
         </button>
+        <button onclick="showTab('questions')" id="tab-questions"
+                class="tab-btn px-4 py-2 font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+            ❓ Вопросы
+        </button>
         <button onclick="showTab('serp')" id="tab-serp"
                 class="tab-btn px-4 py-2 font-semibold border-b-2 border-transparent text-gray-500 hover:text-gray-700">
             🔍 Поисковая выдача
@@ -219,6 +223,104 @@
         </div>
     </div>
 
+    <!-- ═══ ВКЛАДКА: Вопросы ═══ -->
+    <div id="pane-questions" class="hidden">
+
+        <div class="bg-white p-6 rounded-xl shadow-sm mb-6 border border-gray-100">
+            <form id="questionsForm" class="grid grid-cols-1 gap-4">
+                <div>
+                    <label class="block font-semibold mb-1">Фраза или тема:</label>
+                    <input type="text" id="q_phrase" placeholder="видеонаблюдение" required
+                           class="w-full border rounded p-2 focus:ring focus:ring-blue-300 outline-none">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block font-semibold mb-1">Мин. базовая частотность:</label>
+                        <input type="number" id="q_min_freq" value="0" min="0"
+                               class="w-full border rounded p-2 outline-none">
+                    </div>
+                    <div>
+                        <label class="flex items-center gap-2 font-semibold mb-1 cursor-pointer">
+                            <input type="checkbox" id="q_exact_enabled" class="w-4 h-4">
+                            <span>Считать точную частотность</span>
+                        </label>
+                        <div class="flex items-center gap-2">
+                            <input type="number" id="q_exact_top" value="50" min="1" max="500" disabled
+                                   class="w-24 border rounded p-2 outline-none disabled:bg-gray-100 disabled:text-gray-400">
+                            <span class="text-xs text-gray-400">для первых N фраз (+0.01 ₽ за фразу)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="text-xs text-gray-600 bg-gray-50 border border-gray-100 rounded p-2.5 break-all">
+                    Маска запроса: <code id="q_mask_preview" class="text-gray-800"></code>
+                </div>
+
+                <button type="submit" id="qSubmitBtn"
+                        class="bg-blue-600 text-white font-semibold p-2.5 rounded hover:bg-blue-700 transition flex items-center justify-center gap-2">
+                    <span>❓ Найти вопросы</span>
+                </button>
+            </form>
+        </div>
+
+        <!-- Статус / Прогресс -->
+        <div id="qLoader" class="hidden bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6">
+            <div class="flex justify-between items-center mb-2">
+                <span id="qStageText" class="text-sm font-semibold text-blue-700">Инициализация...</span>
+                <span id="qPercentText" class="text-sm font-bold text-blue-600">0%</span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden mb-4">
+                <div id="qProgressBar" class="bg-blue-600 h-3 rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
+            </div>
+            <div class="flex justify-between items-center">
+                <span class="text-xs text-gray-400">Найденные вопросы сразу записываются в SQLite</span>
+                <button type="button" id="qCancelBtn" onclick="stopQuestionsTask()"
+                        class="bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 font-semibold px-3 py-1.5 rounded text-xs transition">
+                    ⏹ Остановить
+                </button>
+            </div>
+        </div>
+
+        <!-- Ошибка -->
+        <div id="qErrorBox" class="hidden bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 mb-4"></div>
+
+        <!-- Результаты -->
+        <div id="qResults" class="hidden bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h2 class="text-lg font-bold" id="qResultsTitle">Найденные вопросы</h2>
+                    <p class="text-xs text-gray-400 mt-0.5" id="qResultMeta"></p>
+                </div>
+                <div class="flex gap-2 flex-wrap justify-end">
+                    <button onclick="qCopyPhrases()"
+                            class="bg-gray-100 text-gray-700 text-sm font-semibold px-3 py-2 rounded hover:bg-gray-200 transition">
+                        📋 Скопировать фразы
+                    </button>
+                    <button onclick="qExportExcel()"
+                            class="bg-green-600 text-white text-sm font-semibold px-3 py-2 rounded hover:bg-green-700 transition shadow-sm">
+                        ⬇ Скачать Excel
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse border border-gray-200 text-left text-sm">
+                    <thead>
+                        <tr class="bg-gray-100 text-gray-700">
+                            <th class="border p-2.5 text-center w-10">№</th>
+                            <th class="border p-2.5 text-center w-24">Вопрос</th>
+                            <th class="border p-2.5">Ключевая фраза</th>
+                            <th class="border p-2.5 text-right w-32">Базовая</th>
+                            <th class="border p-2.5 text-right w-40 text-blue-600">Точная [!фраза]</th>
+                        </tr>
+                    </thead>
+                    <tbody id="qTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <!-- ═══ ВКЛАДКА: История ═══ -->
     <div id="pane-history" class="hidden">
         <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
@@ -257,6 +359,34 @@
                 </table>
             </div>
         </div>
+
+        <!-- Результаты вопросов из истории -->
+        <div id="historyQuestions" class="hidden bg-white rounded-xl shadow-sm p-6 mt-4 border border-gray-100">
+            <div class="flex justify-between items-center mb-4">
+                <div>
+                    <h2 class="text-lg font-bold" id="historyQTitle"></h2>
+                    <span class="text-xs text-gray-400">Вопросы по маске Wordstat</span>
+                </div>
+                <button id="historyQExportBtn"
+                        class="bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded hover:bg-green-700 transition flex items-center gap-1.5">
+                    <span>⬇ Скачать Excel</span>
+                </button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse border border-gray-200 text-left text-sm">
+                    <thead>
+                        <tr class="bg-gray-100 text-gray-700">
+                            <th class="border p-2.5 text-center w-10">№</th>
+                            <th class="border p-2.5 text-center w-24">Вопрос</th>
+                            <th class="border p-2.5">Ключевая фраза</th>
+                            <th class="border p-2.5 text-right w-32">Базовая</th>
+                            <th class="border p-2.5 text-right w-40 text-blue-600">Точная [!фраза]</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyQBody"></tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
 </div>
@@ -276,7 +406,7 @@
 
     // ── Вкладки ─────────────────────────────────────────────────────────
     function showTab(name) {
-        ['parsing', 'serp', 'history'].forEach(t => {
+        ['parsing', 'serp', 'questions', 'history'].forEach(t => {
             document.getElementById('pane-' + t).classList.toggle('hidden', t !== name);
             const btn = document.getElementById('tab-' + t);
             btn.classList.toggle('border-blue-600', t === name);
@@ -510,15 +640,27 @@
                     statusBadge = '<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full ml-2">ошибка</span>';
                 }
 
+                const modeBadge = q.mode === 'questions'
+                    ? '<span class="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full ml-2">вопросы</span>'
+                    : '';
+                const countLabel = q.mode === 'questions' ? 'вопросов' : 'фраз';
+
                 div.innerHTML = `
-                    <div class="flex items-center">
+                    <div class="flex items-center flex-wrap">
                         <span class="font-medium text-gray-800">${q.seed_phrase}</span>
+                        ${modeBadge}
                         ${statusBadge}
-                        <span class="text-gray-400 text-xs ml-2 bg-gray-100 px-2 py-0.5 rounded-full">${q.phrase_count} фраз</span>
+                        <span class="text-gray-400 text-xs ml-2 bg-gray-100 px-2 py-0.5 rounded-full">${q.phrase_count} ${countLabel}</span>
                     </div>
                     <span class="text-gray-400 text-xs font-mono">${q.created_at}</span>
                 `;
-                div.onclick = () => loadHistoryItem(q.id, q.seed_phrase, q.created_at);
+                div.onclick = () => {
+                    if (q.mode === 'questions') {
+                        loadHistoryQuestions(q.id, q.seed_phrase, q.created_at);
+                    } else {
+                        loadHistoryItem(q.id, q.seed_phrase, q.created_at);
+                    }
+                };
                 list.appendChild(div);
             });
         } catch (err) {
@@ -532,6 +674,7 @@
         const title = document.getElementById('historyResultTitle');
         const exportBtn = document.getElementById('historyExportBtn');
 
+        document.getElementById('historyQuestions').classList.add('hidden');
         container.classList.add('hidden');
 
         try {
@@ -545,6 +688,29 @@
             container.scrollIntoView({ behavior: 'smooth' });
         } catch (err) {
             alert('Ошибка загрузки запроса: ' + err.message);
+        }
+    }
+
+    async function loadHistoryQuestions(id, phrase, date) {
+        const container = document.getElementById('historyQuestions');
+        const tbody = document.getElementById('historyQBody');
+        const title = document.getElementById('historyQTitle');
+        const exportBtn = document.getElementById('historyQExportBtn');
+
+        document.getElementById('historyResults').classList.add('hidden');
+        container.classList.add('hidden');
+
+        try {
+            const resp = await fetch(`/api/history/${id}`);
+            const result = await resp.json();
+
+            title.textContent = `«${phrase}» — ${date}`;
+            renderQuestionsTable(tbody, result.results);
+            exportBtn.onclick = () => { window.location = `/api/export-questions/${id}`; };
+            container.classList.remove('hidden');
+            container.scrollIntoView({ behavior: 'smooth' });
+        } catch (err) {
+            alert('Ошибка загрузки вопросов: ' + err.message);
         }
     }
 
@@ -690,6 +856,201 @@
         } catch (err) {
             alert('Ошибка экспорта: ' + err.message);
         }
+    }
+
+    // ═══ ВОПРОСЫ ═════════════════════════════════════════════════════════
+
+    const Q_MASK_WORDS = '(+как|+почему|+зачем|+что|+когда|+где|+сколько|+какой|+какая|+какие|+чем|+кто|+куда|+можно +ли)';
+
+    let qActiveTaskId = null;
+    let qPollInterval = null;
+    let qCurrentQueryId = null;
+    let qLastData = null;
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function updateQuestionMaskPreview() {
+        const phrase = document.getElementById('q_phrase').value.trim() || 'ваша фраза';
+        document.getElementById('q_mask_preview').textContent = `${Q_MASK_WORDS} ${phrase}`;
+    }
+
+    document.getElementById('q_phrase').addEventListener('input', updateQuestionMaskPreview);
+    updateQuestionMaskPreview();
+
+    document.getElementById('q_exact_enabled').addEventListener('change', function () {
+        document.getElementById('q_exact_top').disabled = !this.checked;
+    });
+
+    document.getElementById('questionsForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        const phrase = document.getElementById('q_phrase').value.trim();
+        if (!phrase) return;
+
+        const minFreq = parseInt(document.getElementById('q_min_freq').value) || 0;
+        const exactEnabled = document.getElementById('q_exact_enabled').checked;
+        const exactTop = exactEnabled
+            ? Math.min(500, Math.max(1, parseInt(document.getElementById('q_exact_top').value) || 1))
+            : 0;
+
+        const loader = document.getElementById('qLoader');
+        const progressBar = document.getElementById('qProgressBar');
+        const stageText = document.getElementById('qStageText');
+        const percentText = document.getElementById('qPercentText');
+        const errorBox = document.getElementById('qErrorBox');
+        const results = document.getElementById('qResults');
+        const submitBtn = document.getElementById('qSubmitBtn');
+        const cancelBtn = document.getElementById('qCancelBtn');
+
+        if (qPollInterval) clearInterval(qPollInterval);
+        loader.classList.remove('hidden');
+        progressBar.style.width = '0%';
+        percentText.textContent = '0%';
+        stageText.textContent = 'Запуск задачи...';
+        cancelBtn.disabled = false;
+        cancelBtn.classList.remove('opacity-50');
+        errorBox.classList.add('hidden');
+        results.classList.add('hidden');
+        document.getElementById('qTableBody').innerHTML = '';
+        submitBtn.disabled = true;
+        qCurrentQueryId = null;
+        qLastData = null;
+
+        const formData = new FormData();
+        formData.append('phrase', phrase);
+        formData.append('min_freq', minFreq);
+        formData.append('exact_top', exactTop);
+
+        try {
+            const resp = await fetch('/api/run-questions', { method: 'POST', body: formData });
+            const result = await resp.json();
+            if (!resp.ok) throw new Error(result.detail || 'Не удалось запустить поиск вопросов');
+
+            qActiveTaskId = result.task_id;
+            startQuestionsPolling(result.task_id, phrase);
+
+        } catch (err) {
+            loader.classList.add('hidden');
+            submitBtn.disabled = false;
+            errorBox.textContent = '⚠ Ошибка: ' + err.message;
+            errorBox.classList.remove('hidden');
+        }
+    });
+
+    function startQuestionsPolling(taskId, phrase) {
+        qActiveTaskId = taskId;
+        const loader = document.getElementById('qLoader');
+        const progressBar = document.getElementById('qProgressBar');
+        const stageText = document.getElementById('qStageText');
+        const percentText = document.getElementById('qPercentText');
+        const errorBox = document.getElementById('qErrorBox');
+        const results = document.getElementById('qResults');
+        const tbody = document.getElementById('qTableBody');
+        const submitBtn = document.getElementById('qSubmitBtn');
+
+        if (qPollInterval) clearInterval(qPollInterval);
+
+        qPollInterval = setInterval(async () => {
+            try {
+                const taskResp = await fetch(`/api/tasks/${taskId}`);
+                if (!taskResp.ok) {
+                    clearInterval(qPollInterval);
+                    loader.classList.add('hidden');
+                    submitBtn.disabled = false;
+                    return;
+                }
+
+                const task = await taskResp.json();
+
+                progressBar.style.width = `${task.progress}%`;
+                percentText.textContent = `${task.progress}%`;
+                if (task.stage) stageText.textContent = task.stage;
+
+                if (task.status === 'completed' || task.status === 'stopped') {
+                    clearInterval(qPollInterval);
+                    loader.classList.add('hidden');
+                    submitBtn.disabled = false;
+
+                    qCurrentQueryId = task.query_id;
+                    qLastData = task.data;
+                    renderQuestionsTable(tbody, task.data);
+
+                    document.getElementById('qResultsTitle').textContent = task.status === 'stopped'
+                        ? '⚠ Поиск остановлен'
+                        : 'Найденные вопросы';
+
+                    const mask = task.mask || `${Q_MASK_WORDS} ${phrase}`;
+                    document.getElementById('qResultMeta').textContent =
+                        `Маска: ${mask}  •  Найдено: ${task.data ? task.data.length : 0}` +
+                        (task.query_id ? `  •  запрос #${task.query_id}` : '');
+
+                    results.classList.remove('hidden');
+
+                } else if (task.status === 'failed') {
+                    clearInterval(qPollInterval);
+                    loader.classList.add('hidden');
+                    submitBtn.disabled = false;
+                    errorBox.textContent = '⚠ Ошибка: ' + (task.error || 'Неизвестная ошибка');
+                    errorBox.classList.remove('hidden');
+                }
+            } catch (pollErr) {
+                console.error('Ошибка проверки статуса задачи вопросов:', pollErr);
+            }
+        }, 700);
+    }
+
+    function renderQuestionsTable(tbody, data) {
+        tbody.innerHTML = '';
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="border p-4 text-center text-gray-500">Вопросов не найдено — попробуйте другую фразу или снизьте минимальную частотность</td></tr>';
+            return;
+        }
+
+        data.forEach((item, index) => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-purple-50/40 transition';
+            tr.innerHTML = `
+                <td class="border p-2.5 text-center text-gray-400">${index + 1}</td>
+                <td class="border p-2.5 text-center">
+                    <span class="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full capitalize">${escapeHtml(item.question || '—')}</span>
+                </td>
+                <td class="border p-2.5">${escapeHtml(item.phrase)}</td>
+                <td class="border p-2.5 text-right font-mono">${item.base_freq ?? '—'}</td>
+                <td class="border p-2.5 text-right font-mono font-semibold text-blue-700">${item.exact_freq ?? '—'}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    async function stopQuestionsTask() {
+        if (!qActiveTaskId) return;
+        const cancelBtn = document.getElementById('qCancelBtn');
+        cancelBtn.disabled = true;
+        cancelBtn.classList.add('opacity-50');
+        document.getElementById('qStageText').textContent = 'Отправка сигнала остановки...';
+
+        try {
+            await fetch(`/api/tasks/${qActiveTaskId}/cancel`, { method: 'POST' });
+        } catch (e) {
+            console.error('Ошибка отмены:', e);
+        }
+    }
+
+    function qExportExcel() {
+        if (!qCurrentQueryId) return;
+        window.location = `/api/export-questions/${qCurrentQueryId}`;
+    }
+
+    function qCopyPhrases() {
+        if (!qLastData) return;
+        const phrases = qLastData.map(item => item.phrase).join('\n');
+        navigator.clipboard.writeText(phrases).then(() => showCopyToast('Фразы скопированы в буфер!'));
     }
 
     function showCopyToast(msg) {

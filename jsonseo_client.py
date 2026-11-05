@@ -1,7 +1,7 @@
 """
 Клиент json seo API.
 Методы:
-  - fetch_phrases(mask, page) → список фраз с базовой частотностью
+  - fetch_phrases(mask)       → список фраз с базовой частотностью (весь список за один запрос)
   - fetch_exact(phrase)       → точная частотность ("!слово !слово", kind="exact")
   - fetch_yandex_serp(query)  → органическая поисковая выдача Яндекса (ТОП сайтов) с полными Title
 """
@@ -120,18 +120,26 @@ class JsonSeoClient:
     def _params(self, extra: dict) -> dict:
         return {"key": self.api_key, **extra}
 
-    def fetch_phrases(self, mask: str, page: int = 1) -> list[dict]:
+    def fetch_phrases(self, mask: str) -> list[dict]:
         """
-        GET /wordstat — возвращает список фраз по маске.
+        GET /wordstat — возвращает список популярных фраз по маске.
         Каждый элемент: {"text": "...", "value": 1234}
+
+        Пагинации у метода нет: popular и associations приходят целиком
+        за один запрос (0.01 ₽), параметр page игнорируется.
         """
         resp = self._client.get(
             f"{self.BASE_URL}/wordstat",
-            params=self._params({"text": mask, "page": page}),
+            params=self._params({"text": mask}),
         )
         resp.raise_for_status()
         data = resp.json()
-        return data.get("results", {}).get("popular", [])
+
+        # Ошибка синтаксиса операторов приходит внутри 200 с полем error
+        if data.get("error"):
+            raise RuntimeError(f"Wordstat: {data['error']}")
+
+        return (data.get("results") or {}).get("popular", []) or []
 
     def fetch_exact(self, phrase: str) -> Optional[int]:
         """

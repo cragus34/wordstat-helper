@@ -26,25 +26,30 @@ def init_db():
                 created_at   TEXT NOT NULL,
                 status       TEXT NOT NULL DEFAULT 'completed',
                 phrase_count INTEGER NOT NULL DEFAULT 0,
-                results_json TEXT NOT NULL DEFAULT '[]'
+                results_json TEXT NOT NULL DEFAULT '[]',
+                mode         TEXT NOT NULL DEFAULT 'semantics'
             )
         """)
-        # Миграция: если колонка status отсутствует в существующей базе
+        # Миграции: добавляем недостающие колонки в существующую базу
         cur = con.execute("PRAGMA table_info(queries)")
         columns = [row["name"] for row in cur.fetchall()]
         if "status" not in columns:
             con.execute("ALTER TABLE queries ADD COLUMN status TEXT NOT NULL DEFAULT 'completed'")
+        if "mode" not in columns:
+            # semantics — обычный сбор семантики, questions — вкладка «Вопросы»
+            con.execute("ALTER TABLE queries ADD COLUMN mode TEXT NOT NULL DEFAULT 'semantics'")
 
 
-def create_query(seed_phrase: str) -> int:
+def create_query(seed_phrase: str, mode: str = "semantics") -> int:
     """Создаёт запрос в БД в статусе running сразу на старте."""
     with _conn() as con:
         cur = con.execute(
-            """INSERT INTO queries (seed_phrase, created_at, status, phrase_count, results_json)
-               VALUES (?, ?, 'running', 0, '[]')""",
+            """INSERT INTO queries (seed_phrase, created_at, status, phrase_count, results_json, mode)
+               VALUES (?, ?, 'running', 0, '[]', ?)""",
             (
                 seed_phrase,
                 datetime.now().isoformat(timespec="seconds"),
+                mode,
             ),
         )
         return cur.lastrowid
@@ -75,7 +80,7 @@ def list_queries() -> list[dict]:
     """Возвращает все запросы (только метаданные)."""
     with _conn() as con:
         rows = con.execute(
-            "SELECT id, seed_phrase, created_at, status, phrase_count FROM queries ORDER BY id DESC"
+            "SELECT id, seed_phrase, created_at, status, phrase_count, mode FROM queries ORDER BY id DESC"
         ).fetchall()
     return [dict(r) for r in rows]
 
