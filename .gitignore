@@ -6,3 +6,5 @@ __pycache__/
 env/
 *.log
 *.db.bak
+.tmp/
+Запустить на ноутбуке.bat

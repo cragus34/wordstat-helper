@@ -83,7 +83,49 @@ def extract_questions(phrases: list[dict], min_freq: int = 0) -> list[dict]:
             "question": question,
             "base_freq": value,
             "exact_freq": None,
+            "source": "wordstat",
         })
 
     result.sort(key=lambda x: x["base_freq"], reverse=True)
     return result
+
+
+def _clean_ai_text(text: str) -> str:
+    """
+    Приводит формулировку ИИ к виду, который принимает Wordstat:
+    убирает кавычки и знаки в конце. «?» в конце ломает запрос частотности
+    («ошибка в синтаксисе операторов»), поэтому его тоже убираем.
+    """
+    cleaned = " ".join(str(text).split()).strip()
+    cleaned = cleaned.strip("«»\"'")
+    cleaned = cleaned.rstrip(" ?!.,;:…").strip()
+    return cleaned
+
+
+def merge_ai_questions(found: list[dict], follow_ups: list[str]) -> list[dict]:
+    """
+    Добавляет к найденным вопросам уточнения из быстрого ответа Алисы (aiAnswer.followUps).
+
+    Это формулировки нейросети, а не запросы людей, поэтому помечаются source="ai".
+    Базовая частотность у них считается отдельно, уже в воркере. Дубли с Вордстатом
+    отбрасываются по нормализованному тексту.
+    """
+    seen = {" ".join(str(item.get("phrase", "")).split()).lower() for item in found}
+    added: list[dict] = []
+
+    for raw in follow_ups:
+        text = _clean_ai_text(raw)
+        key = text.lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+
+        added.append({
+            "phrase": text,
+            "question": detect_question(text) or "ИИ",
+            "base_freq": None,
+            "exact_freq": None,
+            "source": "ai",
+        })
+
+    return added

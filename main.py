@@ -26,7 +26,7 @@ from history import (
     update_query_progress,
 )
 from jsonseo_client import JsonSeoClient
-from questions import build_question_mask, extract_questions
+from questions import build_question_mask, extract_questions, merge_ai_questions
 
 # ── Конфиг ──────────────────────────────────────────────────────────────
 load_dotenv()
@@ -57,7 +57,8 @@ templates = Jinja2Templates(directory="templates")
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    # Starlette 1.x: request передаётся первым аргументом, шаблон — вторым
+    return templates.TemplateResponse(request, "index.html")
 
 
 # ── Фоновая логика сбора ──────────────────────────────────────────────────
@@ -186,10 +187,19 @@ def background_parse_worker(task_id: str, seed_phrase: str, min_freq: int, stop_
         client.close()
 
 
-def background_questions_worker(task_id: str, phrase: str, min_freq: int, exact_top: int):
+def background_questions_worker(
+    task_id: str,
+    phrase: str,
+    min_freq: int,
+    exact_top: int,
+    include_ai: bool = False,
+):
     """
     Вкладка «Вопросы»: одна маска + фраза, затем (опционально) точная
     частотность для первых exact_top фраз по базовой частоте.
+
+    include_ai добавляет уточняющие вопросы из быстрого ответа Алисы
+    (aiAnswer.followUps) с пометкой source="ai".
     """
     def update_task(**kwargs):
         with tasks_lock:
@@ -203,7 +213,7 @@ def background_questions_worker(task_id: str, phrase: str, min_freq: int, exact_
     query_id = create_query(phrase, mode="questions")
     mask = build_question_mask(phrase)
     update_task(query_id=query_id, mask=mask)
-    log.info("[%s] Вопросы по «%s», маска: %s", task_id, phrase, mask)
+    log.info("[%s] Вопросы по «%s», маска: %s, ИИ: %s", task_id, phrase, mask, include_ai)
 
     client = JsonSeoClient(API_KEY)
     results: list[dict] = []
@@ -227,6 +237,42 @@ def background_questions_worker(task_id: str, phrase: str, min_freq: int, exact_
         log.info("[%s] Wordstat вернул %d фраз, вопросов после фильтра: %d",
                  task_id, len(raw_phrases), len(found))
 
+        # ── Шаг 1б (опционально): вопросы из быстрого ответа Алисы ──────
+        if include_ai:
+            update_task(stage="Запрашиваем быстрый ответ Алисы...", progress=25)
+            try:
+                ai_answer = client.fetch_ai_answer(phrase)
+            except Exception as e:
+                log.warning("[%s] Быстрый ответ Алисы недоступен: %s", task_id, e)
+                ai_answer = {}
+
+            follow_ups = ai_answer.get("followUps") or []
+            ai_items = merge_ai_questions(found, follow_ups)
+            log.info("[%s] Алиса вернула %d уточнений, новых после дедупликации: %d",
+                     task_id, len(follow_ups), len(ai_items))
+
+            # У вопросов ИИ своей частотности нет — снимаем базовую через Wordstat
+            for idx, item in enumerate(ai_items, start=1):
+                if is_cancelled():
+                    found.sort(key=lambda x: x.get("base_freq") or 0, reverse=True)
+                    save(found, "stopped", f"Остановлено. Сохранено {len(found)} вопросов")
+                    return
+
+                pct = 35 + int((idx / max(len(ai_items), 1)) * 20)
+                update_task(
+                    stage=f"Частотность вопросов ИИ: {idx} из {len(ai_items)}",
+                    progress=min(pct, 55),
+                )
+                try:
+                    item["base_freq"] = client.fetch_frequency(item["phrase"], "base")
+                except Exception as e:
+                    log.warning("[%s] Ошибка частотности для «%s»: %s", task_id, item["phrase"], e)
+                    item["base_freq"] = None
+
+            # Порог частотности к вопросам ИИ не применяем: это формулировки
+            # нейросети, у них часто 0 — иначе галочка теряет смысл.
+            found.extend(ai_items)
+
         if not found:
             save([], "completed", "Готово: вопросов не найдено")
             return
@@ -236,15 +282,16 @@ def background_questions_worker(task_id: str, phrase: str, min_freq: int, exact_
 
         # ── Шаг 2 (опционально): точная частотность top-N ───────────────
         if exact_top > 0:
+            found.sort(key=lambda x: x.get("base_freq") or 0, reverse=True)
             top = found[:exact_top]
             for idx, item in enumerate(top, start=1):
                 if is_cancelled():
                     log.info("[%s] Остановлено на фразе %d из %d", task_id, idx, len(top))
-                    found.sort(key=lambda x: x["base_freq"], reverse=True)
+                    found.sort(key=lambda x: x.get("base_freq") or 0, reverse=True)
                     save(found, "stopped", f"Остановлено. Сохранено {len(found)} вопросов")
                     return
 
-                pct = 30 + int((idx / len(top)) * 65)
+                pct = 55 + int((idx / len(top)) * 40)
                 update_task(
                     stage=f"Точная частотность: {idx} из {len(top)} ({pct}%)",
                     progress=pct,
@@ -258,7 +305,10 @@ def background_questions_worker(task_id: str, phrase: str, min_freq: int, exact_
 
                 update_query_progress(query_id, found, status="running")
 
-            found.sort(key=lambda x: (x.get("exact_freq") or 0, x["base_freq"]), reverse=True)
+        found.sort(
+            key=lambda x: (x.get("exact_freq") or 0, x.get("base_freq") or 0),
+            reverse=True,
+        )
 
         results = found
         save(results, "completed", f"Готово: {len(results)} вопросов")
@@ -308,6 +358,7 @@ def run_questions(
     phrase: str = Form(...),
     min_freq: int = Form(0),
     exact_top: int = Form(0),
+    include_ai: int = Form(0),
 ):
     """Вкладка «Вопросы»: запуск поиска вопросительных ключей по фразе."""
     if not API_KEY:
@@ -319,6 +370,7 @@ def run_questions(
 
     # Потолок на точную частотность: 0.01 ₽ за фразу
     exact_top = max(0, min(int(exact_top), 500))
+    use_ai = bool(include_ai)
 
     task_id = str(uuid.uuid4())
     mask = build_question_mask(clean_phrase)
@@ -335,10 +387,13 @@ def run_questions(
             "error": None,
             "mode": "questions",
             "mask": mask,
+            "include_ai": use_ai,
         }
 
-    background_tasks.add_task(background_questions_worker, task_id, clean_phrase, min_freq, exact_top)
-    return {"status": "accepted", "task_id": task_id, "mask": mask}
+    background_tasks.add_task(
+        background_questions_worker, task_id, clean_phrase, min_freq, exact_top, use_ai
+    )
+    return {"status": "accepted", "task_id": task_id, "mask": mask, "include_ai": use_ai}
 
 
 @app.get("/api/tasks/{task_id}")

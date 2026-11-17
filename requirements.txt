@@ -4,3 +4,5 @@ uvicorn[standard]
 python-dotenv
 openpyxl
 httpx
+jinja2
+python-multipart

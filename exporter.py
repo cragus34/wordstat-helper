@@ -228,7 +228,7 @@ def build_questions_xlsx(
     ws.cell(row=2, column=1, value=meta).font = meta_font
 
     # ── Блок 2: Заголовки таблицы ─────────────────────────────────────────
-    table_headers = ["№", "Вопрос", "Ключевая фраза", "Базовая частотность", "Точная частотность [!фраза]"]
+    table_headers = ["№", "Вопрос", "Источник", "Ключевая фраза", "Базовая частотность", "Точная частотность [!фраза]"]
     start_row = 4
 
     for col_idx, header_text in enumerate(table_headers, start=1):
@@ -249,36 +249,44 @@ def build_questions_xlsx(
 
         c1 = ws.cell(row=r_idx, column=1, value=i + 1)
         c2 = ws.cell(row=r_idx, column=2, value=item.get("question", ""))
-        c3 = ws.cell(row=r_idx, column=3, value=item.get("phrase", ""))
-        c4 = ws.cell(row=r_idx, column=4, value=item.get("base_freq"))
-        c5 = ws.cell(row=r_idx, column=5, value=exact_value)
+        c3 = ws.cell(
+            row=r_idx,
+            column=3,
+            value="ИИ (Алиса)" if item.get("source") == "ai" else "Вордстат",
+        )
+        c4 = ws.cell(row=r_idx, column=4, value=item.get("phrase", ""))
+        c5 = ws.cell(row=r_idx, column=5, value=item.get("base_freq"))
+        c6 = ws.cell(row=r_idx, column=6, value=exact_value)
 
         c1.font = Font(name="Calibri", size=11, bold=True, color="1E3A8A")
         c2.font = Font(name="Calibri", size=11, bold=True, color="7C3AED")
-        c3.font = data_font
+        c3.font = Font(name="Calibri", size=10, italic=True, color="6B7280")
         c4.font = data_font
-        c5.font = Font(name="Calibri", size=11, bold=True, color="1D4ED8")
+        c5.font = data_font
+        c6.font = Font(name="Calibri", size=11, bold=True, color="1D4ED8")
 
         c1.alignment = Alignment(horizontal="center", vertical="center")
         c2.alignment = Alignment(horizontal="left", vertical="center")
         c3.alignment = Alignment(horizontal="left", vertical="center")
-        c4.alignment = Alignment(horizontal="right", vertical="center")
+        c4.alignment = Alignment(horizontal="left", vertical="center")
         c5.alignment = Alignment(horizontal="right", vertical="center")
+        c6.alignment = Alignment(horizontal="right", vertical="center")
 
         if i % 2 == 1:
-            for cell in (c1, c2, c3, c4, c5):
+            for cell in (c1, c2, c3, c4, c5, c6):
                 cell.fill = zebra_fill
 
-        for cell in (c1, c2, c3, c4, c5):
+        for cell in (c1, c2, c3, c4, c5, c6):
             cell.border = border_data
 
     # Ширина колонок
     max_phrase_len = max([len(item.get("phrase", "")) for item in results], default=25)
     ws.column_dimensions["A"].width = 6
     ws.column_dimensions["B"].width = 14
-    ws.column_dimensions["C"].width = max(max_phrase_len + 4, 35)
-    ws.column_dimensions["D"].width = 22
-    ws.column_dimensions["E"].width = 28
+    ws.column_dimensions["C"].width = 15
+    ws.column_dimensions["D"].width = max(max_phrase_len + 4, 35)
+    ws.column_dimensions["E"].width = 22
+    ws.column_dimensions["F"].width = 28
 
     buf = io.BytesIO()
     wb.save(buf)

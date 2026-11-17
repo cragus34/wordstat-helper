@@ -253,6 +253,18 @@
                     </div>
                 </div>
 
+                <div>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="q_include_ai" class="w-4 h-4">
+                        <span class="font-semibold">Добавить вопросы от ИИ</span>
+                    </label>
+                    <p class="text-xs text-gray-400 mt-1">
+                        Уточнения из быстрого ответа Алисы (<code>followUps</code>). Помечаются источником
+                        «ИИ (Алиса)», порог частотности к ним не применяется: у формулировок нейросети
+                        часто 0. Стоит ещё ≈0.01–0.03 ₽.
+                    </p>
+                </div>
+
                 <div class="text-xs text-gray-600 bg-gray-50 border border-gray-100 rounded p-2.5 break-all">
                     Маска запроса: <code id="q_mask_preview" class="text-gray-800"></code>
                 </div>
@@ -310,6 +322,7 @@
                         <tr class="bg-gray-100 text-gray-700">
                             <th class="border p-2.5 text-center w-10">№</th>
                             <th class="border p-2.5 text-center w-24">Вопрос</th>
+                            <th class="border p-2.5 text-center w-28">Источник</th>
                             <th class="border p-2.5">Ключевая фраза</th>
                             <th class="border p-2.5 text-right w-32">Базовая</th>
                             <th class="border p-2.5 text-right w-40 text-blue-600">Точная [!фраза]</th>
@@ -378,6 +391,7 @@
                         <tr class="bg-gray-100 text-gray-700">
                             <th class="border p-2.5 text-center w-10">№</th>
                             <th class="border p-2.5 text-center w-24">Вопрос</th>
+                            <th class="border p-2.5 text-center w-28">Источник</th>
                             <th class="border p-2.5">Ключевая фраза</th>
                             <th class="border p-2.5 text-right w-32">Базовая</th>
                             <th class="border p-2.5 text-right w-40 text-blue-600">Точная [!фраза]</th>
@@ -926,6 +940,7 @@
         formData.append('phrase', phrase);
         formData.append('min_freq', minFreq);
         formData.append('exact_top', exactTop);
+        formData.append('include_ai', document.getElementById('q_include_ai').checked ? 1 : 0);
 
         try {
             const resp = await fetch('/api/run-questions', { method: 'POST', body: formData });
@@ -986,8 +1001,11 @@
                         : 'Найденные вопросы';
 
                     const mask = task.mask || `${Q_MASK_WORDS} ${phrase}`;
+                    const rows = task.data || [];
+                    const aiCount = rows.filter(item => item.source === 'ai').length;
                     document.getElementById('qResultMeta').textContent =
-                        `Маска: ${mask}  •  Найдено: ${task.data ? task.data.length : 0}` +
+                        `Маска: ${mask}  •  Найдено: ${rows.length}` +
+                        (aiCount ? ` (из них ИИ: ${aiCount})` : '') +
                         (task.query_id ? `  •  запрос #${task.query_id}` : '');
 
                     results.classList.remove('hidden');
@@ -1008,17 +1026,23 @@
     function renderQuestionsTable(tbody, data) {
         tbody.innerHTML = '';
         if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="border p-4 text-center text-gray-500">Вопросов не найдено — попробуйте другую фразу или снизьте минимальную частотность</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="border p-4 text-center text-gray-500">Вопросов не найдено — попробуйте другую фразу или снизьте минимальную частотность</td></tr>';
             return;
         }
 
         data.forEach((item, index) => {
             const tr = document.createElement('tr');
             tr.className = 'hover:bg-purple-50/40 transition';
+            const isAi = item.source === 'ai';
             tr.innerHTML = `
                 <td class="border p-2.5 text-center text-gray-400">${index + 1}</td>
                 <td class="border p-2.5 text-center">
                     <span class="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full capitalize">${escapeHtml(item.question || '—')}</span>
+                </td>
+                <td class="border p-2.5 text-center">
+                    ${isAi
+                        ? '<span class="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full whitespace-nowrap">ИИ (Алиса)</span>'
+                        : '<span class="text-xs bg-green-50 text-green-700 px-2 py-0.5 rounded-full">Вордстат</span>'}
                 </td>
                 <td class="border p-2.5">${escapeHtml(item.phrase)}</td>
                 <td class="border p-2.5 text-right font-mono">${item.base_freq ?? '—'}</td>

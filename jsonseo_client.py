@@ -154,6 +154,50 @@ class JsonSeoClient:
         data = resp.json()
         return data.get("results", {}).get("totalValue")
 
+    def fetch_frequency(self, phrase: str, kind: str = "base") -> Optional[int]:
+        """
+        GET /wordstat/frequency — частотность фразы одного вида (base/exact/...).
+        Нужна для вопросов, которых нет в popular-списке (например, followUps Алисы).
+        """
+        resp = self._client.get(
+            f"{self.BASE_URL}/wordstat/frequency",
+            params=self._params({"text": phrase, "kind": kind}),
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("error"):
+            return None
+        return (data.get("results") or {}).get("totalValue")
+
+    def fetch_ai_answer(
+        self,
+        query: str,
+        region: int = 213,
+        device: str = "desktop",
+    ) -> Dict[str, Any]:
+        """
+        GET /yandex?ai=1 — быстрый ответ Алисы.
+        Возвращает aiAnswer: {"markdown", "sources", "followUps"} или {} если блока нет.
+        Стоит 0.01 ₽ за страницу, плюс 0.01 ₽ только если ответ существует.
+        """
+        params = {
+            "text": query,
+            "region": region,
+            "pages": 1,
+            "device": device,
+            "ai": 1,
+            "ads": 0,
+            "all": 0,
+        }
+        resp = self._client.get(
+            f"{self.BASE_URL}/yandex",
+            params=self._params(params),
+            headers={"Authorization": f"Bearer {self.api_key}"},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("aiAnswer") or {}
+
     def fetch_yandex_serp(
         self,
         query: str,
